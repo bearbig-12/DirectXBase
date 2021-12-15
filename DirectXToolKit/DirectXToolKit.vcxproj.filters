@@ -9,5 +9,13 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
+    <ClInclude Include="StepTimer.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Common">
+      <UniqueIdentifier>{66bafb12-bf4a-4c4a-b8be-d2afe50ef712}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
 </Project>
