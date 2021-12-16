@@ -5,7 +5,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance,
 	_In_ LPSTR lpCmdLine,
 	_In_ int nShowCmd)
 {
-	int x, y;
 	return 0;
 }
 
