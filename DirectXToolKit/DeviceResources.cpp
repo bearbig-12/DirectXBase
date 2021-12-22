@@ -54,10 +54,116 @@ namespace
 
 void DeviceResources::CreateFactory()
 {
+#if defined(_DEBUG) && (_WIN32_WINNT >= 0x603)	// 윈도우 8.1이상부터 작동
+	bool debugDXGI = false;
+	{
+		ComPtr<IDXGIInfoQueue> dxgiInfoQueue;
+		if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(dxgiInfoQueue.GetAddressOf()))))
+		{
+			debugDXGI = true;
+
+			ThrowIfFailed(CreateDXGIFactory2(
+				DXGI_CREATE_FACTORY_DEBUG,
+				IID_PPV_ARGS(m_dxgiFactory.ReleaseAndGetAddressOf())
+			));
+
+			dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, 
+				DXGI_INFO_QUEUE_MESSAGE_SEVERITY_ERROR, true);
+			dxgiInfoQueue->SetBreakOnSeverity(DXGI_DEBUG_ALL, 
+				DXGI_INFO_QUEUE_MESSAGE_SEVERITY_CORRUPTION, true);
+
+			DXGI_INFO_QUEUE_MESSAGE_ID hide[]{		//모니터를 가져오는 함수
+				80,
+			};
+			DXGI_INFO_QUEUE_FILTER filter{};
+			filter.DenyList.NumIDs = _countof(hide);
+			filter.DenyList.pIDList = hide;
+			dxgiInfoQueue->AddStorageFilterEntries(DXGI_DEBUG_DXGI, &filter);
+		}
+
+	}
+
+	if (!debugDXGI)
+#endif
+	{
+		ThrowIfFailed(CreateDXGIFactory1(
+			IID_PPV_ARGS(m_dxgiFactory.ReleaseAndGetAddressOf())
+		));
+	}
 }
 
 void DeviceResources::GetHardwareAdapter(IDXGIAdapter1** ppAdapter)
 {
+	*ppAdapter = nullptr;
+
+	ComPtr<IDXGIAdapter1> adapter;
+
+#if defined(__dxgi1_6_h__) && defined(NTDDI_WIN10_RS4)
+	ComPtr<IDXGIFactory6> factory6;
+	HRESULT hr = m_dxgiFactory.As(&factory6);
+	if (SUCCEEDED(hr))
+	{
+		for (UINT adapterIndex = 0;
+			SUCCEEDED(factory6->EnumAdapterByGpuPreference(
+				adapterIndex,
+				DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+				IID_PPV_ARGS(adapter.ReleaseAndGetAddressOf())))
+			; adapterIndex++)
+		{
+			DXGI_ADAPTER_DESC1 desc;
+			ThrowIfFailed(adapter->GetDesc1(&desc));
+
+			if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+			{
+				continue;
+			}
+#ifdef _DEBUG
+			wchar_t buf[256]{};
+			swprintf_s(buf, L"Direct3D Adapter (%u): VID: %04X, PID:%04X - %ls\n",
+				adapterIndex,
+				desc.VendorId,
+				desc.DeviceId,
+				desc.Description);
+			OutputDebugStringW(buf);
+#endif // _DEBUG
+
+			break;
+		}
+			
+			
+	}
+#endif
+
+	if (!adapter)
+	{
+		for (UINT adapterIndex = 0;
+			SUCCEEDED(m_dxgiFactory->EnumAdapters1(
+				adapterIndex,
+				adapter.ReleaseAndGetAddressOf()))
+			; adapterIndex++)
+		{
+			DXGI_ADAPTER_DESC1 desc;
+			ThrowIfFailed(adapter->GetDesc1(&desc));
+			
+			if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+			{
+				continue;
+			}
+#ifdef _DEBUG
+			wchar_t buf[256]{};
+			swprintf_s(buf, L"Direct3D Adapter (%u): VID: %04X, PID:%04X - %ls\n",
+				adapterIndex,
+				desc.VendorId,
+				desc.DeviceId,
+				desc.Description);
+			OutputDebugStringW(buf);
+#endif // _DEBUG
+
+			break;
+		}
+	}
+	*ppAdapter = adapter.Detach();	// move랑 비슷한 detach
+
 }
 
 void DeviceResources::UpdateColorSpace()
@@ -166,7 +272,7 @@ void DeviceResources::CreateDeviceResources()
 	};
 
 	UINT featureLevelCount{ 0 };
-	for (; featureLevelCount < _countof(s_featureLevels);)
+	for (; featureLevelCount < _countof(s_featureLevels);++featureLevelCount)
 	{
 		if (s_featureLevels[featureLevelCount] < m_d3dMinFeatureLevel)
 		{
@@ -202,7 +308,7 @@ void DeviceResources::CreateDeviceResources()
 			context.GetAddressOf()
 		);
 	}
-#if defined(NDEBUG)
+#if defined(NDEBUG)	// 조건부 컴파일
 	else
 	{
 		throw std::exception("No Direct3D hardware device found");
@@ -319,7 +425,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
 	}
 	else
 	{
-		DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
+		DXGI_SWAP_CHAIN_DESC1 swapChainDesc{};
+		ZeroMemory(&swapChainDesc, sizeof(DXGI_SWAP_CHAIN_DESC1));
 		swapChainDesc.Width = backBufferWidth;
 		swapChainDesc.Height = backBufferHeight;
 		swapChainDesc.Format = backBufferFormat;
@@ -336,7 +443,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
 			(m_options & c_AllowTearing) ?
 			DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0u;
 
-		DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsSwapChainDesc = {};
+		DXGI_SWAP_CHAIN_FULLSCREEN_DESC fsSwapChainDesc{};
+		ZeroMemory(&fsSwapChainDesc, sizeof(DXGI_SWAP_CHAIN_FULLSCREEN_DESC));
 		fsSwapChainDesc.Windowed = TRUE;
 
 		ThrowIfFailed(m_dxgiFactory->CreateSwapChainForHwnd(
@@ -344,7 +452,8 @@ void DeviceResources::CreateWindowSizeDependentResources()
 			m_window,
 			&swapChainDesc,
 			&fsSwapChainDesc,
-			nullptr, m_swapChain.ReleaseAndGetAddressOf()
+			nullptr, 
+			m_swapChain.ReleaseAndGetAddressOf()
 		));
 
 		ThrowIfFailed(m_dxgiFactory->MakeWindowAssociation(
@@ -421,10 +530,13 @@ void DeviceResources::SetWindow(HWND window, int width, int height) noexcept
 
 bool DeviceResources::WindowSizeChanged(int width, int height)
 {
-	RECT newRc;
-	newRc.left = newRc.top = 0;
+	RECT newRc{
+		0,0,
+		width, height
+	};
+	/*newRc.left = newRc.top = 0;
 	newRc.right = width;
-	newRc.bottom = height;
+	newRc.bottom = height;*/
 
 	if (newRc == m_outputSize)
 	{
@@ -441,8 +553,82 @@ bool DeviceResources::WindowSizeChanged(int width, int height)
 
 void DeviceResources::HandleDeviceLost()
 {
+	if (m_deviceNotify)
+	{
+		m_deviceNotify->OnDeviceLost();
+	}
+
+	m_d3dDepthStencilView.Reset();
+	m_d3dRenderTargetView.Reset();
+	m_renderTarget.Reset();
+	m_depthStencil.Reset();
+	m_swapChain.Reset();
+	m_d3dContext.Reset();
+	m_d3dAnnotation.Reset();
+
+#ifdef _DEBUG
+	{
+		ComPtr<ID3D11Debug> d3dDebug;
+		if (SUCCEEDED(m_d3dDevice.As(&d3dDebug)))
+		{
+			d3dDebug->ReportLiveDeviceObjects(D3D11_RLDO_SUMMARY);
+		}
+	}
+
+#endif
+	m_d3dDevice.Reset();
+	m_dxgiFactory.Reset();
+
+	CreateDeviceResources();
+	CreateWindowSizeDependentResources();
+
+
+	if (m_deviceNotify)
+	{
+		m_deviceNotify->OnDeviceRestored();
+	}
 }
 
 void DeviceResources::Present()
 {
+	HRESULT hr = E_FAIL;
+
+	if (m_options & c_AllowTearing)
+	{
+		hr = m_swapChain->Present(0, DXGI_PRESENT_ALLOW_TEARING);
+	}
+	else
+	{
+		hr = m_swapChain->Present(1, 0);
+	}
+
+	m_d3dContext->DiscardView(m_d3dRenderTargetView.Get());
+	if (m_d3dDepthStencilView)
+	{
+		m_d3dContext->DiscardView(m_d3dDepthStencilView.Get());
+	}
+
+	if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
+	{
+#ifdef _DEBUG
+		char buf[64]{};
+		sprintf_s(buf, "Device Lost on Present(): 0x%08X\n",
+			static_cast<unsigned int>(hr == DXGI_ERROR_DEVICE_REMOVED ? 
+				m_d3dDevice->GetDeviceRemovedReason() : hr)
+		);
+		OutputDebugStringA(buf);
+		
+#endif // _DEBUG
+		HandleDeviceLost();
+	}
+	else
+	{
+		ThrowIfFailed(hr);
+
+		// HDR : 정보량이 많음 -> 캐시(Cache)
+		if (!m_dxgiFactory->IsCurrent()) // 팩토리가 다르면 다시 만들어야함
+		{
+			CreateFactory();
+		}
+	}
 }
