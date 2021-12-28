@@ -18,8 +18,8 @@ namespace DX
 		uint64_t m_totalTicks;
 		uint64_t m_leftOverTicks;
 
-		uint64_t m_frameCount;
-		uint64_t m_framesPerSecond;
+		uint32_t m_frameCount;
+		uint32_t m_framesPerSecond;
 		uint32_t m_framesThisSecond;
 		uint64_t m_qpcSecondCounter;
 		
@@ -123,7 +123,7 @@ namespace DX
 
 				// 4000 : 1s = 1000ms
 				if (static_cast<uint64_t>(
-					std::abs(static_cast<uint64_t>(timeDelta - m_targetElapsedTicks))				//절대값 abs 사용
+					std::abs(static_cast<int64_t>(timeDelta - m_targetElapsedTicks))				//절대값 abs 사용
 					) < TicksPerSecond / 4000)
 				{
 					timeDelta = m_targetElapsedTicks;

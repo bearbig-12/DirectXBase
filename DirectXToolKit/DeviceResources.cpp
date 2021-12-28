@@ -168,6 +168,64 @@ void DeviceResources::GetHardwareAdapter(IDXGIAdapter1** ppAdapter)
 
 void DeviceResources::UpdateColorSpace()
 {
+	DXGI_COLOR_SPACE_TYPE colorSpace{ DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709 };
+
+	bool isDisplayHDR10 = false;
+
+#if defined(NTDDI_WIN10_RS2)
+	if (m_swapChain)
+	{
+		ComPtr<IDXGIOutput> output;
+
+		if (SUCCEEDED(m_swapChain->GetContainingOutput(output.GetAddressOf())))
+		{
+			ComPtr<IDXGIOutput6> output6;
+			if (SUCCEEDED(output.As(&output6)))
+			{
+				DXGI_OUTPUT_DESC1 desc;
+				ThrowIfFailed(output6->GetDesc1(&desc));
+				if (desc.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020)
+				{
+					isDisplayHDR10 = true;
+				}
+			}
+		}
+	}
+#endif
+
+	if ((m_options & c_EnableHDR) && isDisplayHDR10)
+	{
+		switch (m_backBufferFormat)
+		{
+		case DXGI_FORMAT_R10G10B10A2_UNORM:
+			colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+			break;
+		case DXGI_FORMAT_R16G16B16A16_FLOAT:
+			colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
+			break;
+
+		default:
+			break;
+		}
+	}
+
+	
+	m_colorSpace = colorSpace;
+
+	//c_EnableHDR ¿É¼Ç + DXGI_FORMAT_R10G10B10A2_UNORM;
+
+	ComPtr<IDXGISwapChain3> swapChain3;
+	if (SUCCEEDED(m_swapChain.As(&swapChain3)))
+	{
+		UINT colorSpaceSupport = 0;
+		if (SUCCEEDED(swapChain3->CheckColorSpaceSupport(m_colorSpace, &colorSpaceSupport)) &&
+			colorSpaceSupport & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT)
+		{
+			ThrowIfFailed(swapChain3->SetColorSpace1(colorSpace));
+		}
+
+
+	}
 }
 
 DeviceResources::DeviceResources(
