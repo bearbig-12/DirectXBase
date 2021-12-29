@@ -1,6 +1,5 @@
 #include "pch.h"
 #include "Game.h"
-#include <sstream>
 #include <iomanip>
 
 using Microsoft::WRL::ComPtr;
@@ -34,6 +33,9 @@ void Game::Initialize(HWND window, int width, int height)
 
 	m_deviceResources->CreateWindowSizeDependentResources();
 	CreateWindowSizeDependentResources();
+
+	LoadSpriteSheetFromJSON();
+	
 }
 
 #pragma region Frame Update
@@ -49,6 +51,35 @@ void Game::Tick()
 	Render();
 }
 
+void Game::LoadSpriteSheetFromJSON()
+{
+	m_rects.clear();
+
+	std::wifstream file(L"Assets/sprites.json", std::wifstream::binary);
+	std::wstringstream stream;
+
+	stream << file.rdbuf();
+
+	file.close();
+
+	rapidjson::GenericDocument<rapidjson::UTF16<>> doc;
+	doc.Parse(stream.str().c_str());
+
+	auto frames = doc[L"frames"].GetArray();
+	for (auto& e : frames)
+	{
+		RECT rct{};
+		auto obj = e[L"frame"].GetObject();
+		rct.left = obj[L"x"].GetInt();
+		rct.top = obj[L"y"].GetInt();
+		rct.right = rct.left + obj[L"w"].GetInt();
+		rct.bottom = rct.top + obj[L"h"].GetInt();
+
+		m_rects.push_back(rct);
+	}
+
+}
+
 void Game::Update(DX::StepTimer const& timer)
 {
 	auto kb = m_keyBoard->GetState();
@@ -58,10 +89,11 @@ void Game::Update(DX::StepTimer const& timer)
 	}
 
 	m_timeToNextFrame -= timer.GetElapsedSeconds();
+
 	if (m_timeToNextFrame < 0.f)
 	{
 		m_timeToNextFrame = 0.1f;
-		m_currentFrame = (m_currentFrame + 1) % static_cast<int>(m_textures.size());
+		m_currentFrame = ((m_currentFrame + 1) % 4);
 	}
 }
 #pragma endregion
@@ -69,6 +101,9 @@ void Game::Update(DX::StepTimer const& timer)
 #pragma region Message Handlers
 void Game::OnActivated()
 {
+	int m_currentFrame{ 0 };
+	double m_timeToNextFrame{ 0.1f };
+	/*std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, 10> m_textures;*/
 }
 
 void Game::OnDeActivated()
@@ -129,10 +164,14 @@ void Game::Render()
 	//m_spriteBatch->Draw(m_texCat.Get(), XMFLOAT2(50.0f, 0.0f), nullptr, Colors::White,
 	//	0.0f, XMFLOAT2(0.0f,0.0f),3.0f);
 
-	m_spriteBatch->Draw(
-		m_textures[m_currentFrame].Get(),
+	/*m_spriteBatch->Draw(
+		m_texture[m_currentFrame].Get(),
 		XMFLOAT2(0,0)
-	);
+	);*/
+
+	m_spriteBatch->Draw(m_texture.Get(), XMFLOAT2(0.0f, 0.0f), &m_rects[m_currentFrame]);
+
+	m_spriteBatch->Draw(m_texture.Get(), XMFLOAT2(30.0f, 30.0f), &m_rects[m_currentFrame]);
 
 
 	m_spriteBatch->End();
@@ -191,19 +230,22 @@ void Game::CreateDeviceDependentResources()
 	//	m_texCat.ReleaseAndGetAddressOf()
 	//));
 
-	std::wstringstream fileName;
-	for (int i = 0; i < 10; ++i)
-	{
-		fileName.str(L"");
-		fileName << L"Assets/die" << std::setfill(L'0') << std::setw(2) << i+1 << L".png";
+	//std::wstringstream fileName;
+	//for (int i = 0; i < 10; ++i)
+	//{
+	//	fileName.str(L"");
+	//	fileName << L"Assets/die" << std::setfill(L'0') << std::setw(2) << i+1 << L".png";
 
-		DX::ThrowIfFailed(CreateWICTextureFromFile(
-			device,
-			fileName.str().c_str(),
-			nullptr,
-			m_textures[i].ReleaseAndGetAddressOf()
-		));
-	}
+	//	DX::ThrowIfFailed(CreateWICTextureFromFile(
+	//		device,
+	//		fileName.str().c_str(),
+	//		nullptr,
+	//		m_texture[i].ReleaseAndGetAddressOf()
+	//	));
+	//}
+
+	CreateWICTextureFromFile(device, L"Assets/sprites.png",
+		nullptr, m_texture.ReleaseAndGetAddressOf());
 }
 
 void Game::CreateWindowSizeDependentResources()
@@ -214,10 +256,11 @@ void Game::OnDeviceLost()
 {
 	//m_texCat.Reset();
 	//m_texBug.Reset();
-	for (auto& tex : m_textures)
+	/*for (auto& tex : m_texture)
 	{
 		tex.Reset();
-	}
+	}*/
+	m_texture.Reset();
 	m_spriteBatch.reset();
 	m_commonStates.reset();
 }

@@ -1,7 +1,21 @@
 #pragma once
+#include <vector>
+#include <fstream>
+#include <sstream>
 #include "DeviceResources.h"
 #include "StepTimer.h"
-#include <array>
+
+
+#pragma warning(push)
+#pragma warning(disable:26812)
+#pragma warning(disable:26451)
+#pragma warning(disable:26495)
+#pragma warning(disable:6319)
+#pragma warning(disable:6386)
+#pragma warning(disable:6385)
+#include "rapidjson/document.h"
+#pragma warning(pop)
+
 class Game final : public DX::IDeviceNotify // 더이상 Game에서 자식을 못받음
 {
 private:
@@ -15,13 +29,15 @@ private:
 	std::unique_ptr<DirectX::SpriteBatch>			 m_spriteBatch;
 	std::unique_ptr<DirectX::CommonStates>			 m_commonStates;
 
-	int m_currentFrame{ 0 };
-	double m_timeToNextFrame{ 0.1f };
-	std::array<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>, 10> m_textures;
-
 	std::unique_ptr<DirectX::Keyboard>			m_keyBoard;
 	std::unique_ptr<DirectX::Mouse>				m_mouse;
 
+	int m_currentFrame{ 0 };
+	double m_timeToNextFrame{ 0.1f };
+
+	Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> m_texture;
+
+	std::vector<RECT> m_rects;
 public:
 	Game() noexcept(false);
 	~Game();
@@ -49,6 +65,8 @@ public:
 	void GetDefaultSize(int& width, int& height) const noexcept;
 
 private:
+	void LoadSpriteSheetFromJSON();
+
 	void Update(DX::StepTimer const& timer);
 	void Render();
 
